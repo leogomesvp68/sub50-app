@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sub 50 Cinquenta - Estatísticas</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDIxb37IhllYt8R6_iRcxy1e4KlZupFXb4",
+            authDomain: "sub50-253ae.firebaseapp.com",
+            projectId: "sub50-253ae",
+            storageBucket: "sub50-253ae.firebasestorage.app",
+            messagingSenderId: "874737275056",
+            appId: "1:874737275056:web:f35150e408b63f06326b75"
+        };
+
+        // Inicializar Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        const ADMIN_PASSWORD = "subcinquenta123";
+
+        const Sub50StatsApp = () => {
+            const [players, setPlayers] = useState([]);
+            const [matches, setMatches] = useState([]);
+            const [activeTab, setActiveTab] = useState('rankings');
+            const [newPlayerName, setNewPlayerName] = useState('');
+            const [currentMatch, setCurrentMatch] = useState({ date: '', stats: {} });
+            const [editingMatchId, setEditingMatchId] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [passwordInput, setPasswordInput] = useState('');
+            const [showPasswordModal, setShowPasswordModal] = useState(false);
+
+            useEffect(() => {
+                loadData();
+                // Verificar se já está logado como admin
+                const adminStatus = sessionStorage.getItem('sub50_admin');
+                if (adminStatus === 'true') {
+                    setIsAdmin(true);
+                }
+            }, []);
+
+            const loadData = async () => {
+                try {
+                    // Carregar jogadores
+                    const playersSnapshot = await db.collection('players').orderBy('name').get();
+                    const playersData = playersSnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    
+                    // Carregar partidas
+                    const matchesSnapshot = await db.collection('matches').orderBy('date').get();
+                    const matchesData = matchesSnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    
+                    setPlayers(playersData);
+                    setMatches(matchesData);
+                } catch (error) {
+                    console.error('Erro ao carregar dados:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const checkPassword = () => {
+                if (passwordInput === ADMIN_PASSWORD) {
+                    setIsAdmin(true);
+                    sessionStorage.setItem('sub50_admin', 'true');
+                    setShowPasswordModal(false);
+                    setPasswordInput('');
+                    alert('Login de administrador realizado com sucesso! ✅');
+                } else {
+                    alert('Senha incorreta! ❌');
+                    setPasswordInput('');
+                }
+            };
+
+            const logout = () => {
+                setIsAdmin(false);
+                sessionStorage.removeItem('sub50_admin');
+                setActiveTab('rankings');
+                alert('Logout realizado!');
+            };
+
+            const addPlayer = async () => {
+                if (!isAdmin) {
+                    alert('Apenas administradores podem adicionar jogadores!');
+                    return;
+                }
+                
+                if (newPlayerName.trim()) {
+                    try {
+                        await db.collection('players').add({
+                            name: newPlayerName.trim(),
+                            totalGoals: 0,
+                            totalAssists: 0,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        setNewPlayerName('');
+                        loadData();
+                    } catch (error) {
+                        console.error('Erro ao adicionar jogador:', error);
+                        alert('Erro ao adicionar jogador!');
+                    }
+                }
+            };
+
+            const removePlayer = async (id) => {
+                if (!isAdmin) {
+                    alert('Apenas administradores podem remover jogadores!');
+                    return;
+                }
+                
+                if (window.confirm('Tem certeza que deseja remover este jogador?')) {
+                    try {
+                        await db.collection('players').doc(id).delete();
+                        loadData();
+                    } catch (error) {
+                        console.error('Erro ao remover jogador:', error);
+                        alert('Erro ao remover jogador!');
+                    }
+                }
+            };
+
+            const updateMatchStat = (playerId, stat, value) => {
+                const numValue = Math.max(0, parseInt(value) || 0);
+                setCurrentMatch(prev => ({
+                    ...prev,
+                    stats: {
+                        ...prev.stats,
+                        [playerId]: {
+                            goals: stat === 'goals' ? numValue : (prev.stats[playerId]?.goals || 0),
+                            assists: stat === 'assists' ? numValue : (prev.stats[playerId]?.assists || 0)
+                        }
+                    }
+                }));
+            };
+
+            const recalculateTotals = async (matchesList) => {
+                for (const player of players) {
+                    let totalGoals = 0;
+                    let totalAssists = 0;
+                    
+                    matchesList.forEach(match => {
+                        const stats = match.stats[player.id];
+                        if (stats) {
+                            totalGoals += stats.goals || 0;
+                            totalAssists += stats.assists || 0;
+                        }
+                    });
+                    
+                    await db.collection('players').doc(player.id).update({
+                        totalGoals,
+                        totalAssists
+                    });
+                }
+            };
+
+            const saveMatch = async () => {
+                if (!isAdmin) {
+                    alert('Apenas administradores podem salvar partidas!');
+                    return;
+                }
+                
+                if (!currentMatch.date) {
+                    alert('Por favor, informe a data da partida');
+                    return;
+                }
+
+                try {
+                    if (editingMatchId) {
+                        await db.collection('matches').doc(editingMatchId).update({
+                            date: currentMatch.date,
+                            stats: currentMatch.stats
+                        });
+                    } else {
+                        await db.collection('matches').add({
+                            date: currentMatch.date,
+                            stats: currentMatch.stats,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+                    
+                    await loadData();
+                    const updatedMatches = await db.collection('matches').get();
+                    const matchesData = updatedMatches.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    
+                    await recalculateTotals(matchesData);
+                    await loadData();
+                    
+                    setCurrentMatch({ date: '', stats: {} });
+                    setEditingMatchId(null);
+                    setActiveTab('rankings');
+                    alert(editingMatchId ? 'Partida atualizada com sucesso! ✅' : 'Partida salva com sucesso! ✅');
+                } catch (error) {
+                    console.error('Erro ao salvar partida:', error);
+                    alert('Erro ao salvar partida!');
+                }
+            };
+
+            const editMatch = (match) => {
+                if (!isAdmin) {
+                    alert('Apenas administradores podem editar partidas!');
+                    return;
+                }
+                setCurrentMatch({
+                    date: match.date,
+                    stats: match.stats
+                });
+                setEditingMatchId(match.id);
+                setActiveTab('newMatch');
+            };
+
+            const deleteMatch = async (matchId) => {
+                if (!isAdmin) {
+                    alert('Apenas administradores podem deletar partidas!');
+                    return;
+                }
+                
+                if (window.confirm('Tem certeza que deseja deletar esta partida?')) {
+                    try {
+                        await db.collection('matches').doc(matchId).delete();
+                        await loadData();
+                        
+                        const updatedMatches = await db.collection('matches').get();
+                        const matchesData = updatedMatches.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        
+                        await recalculateTotals(matchesData);
+                        await loadData();
+                        
+                        alert('Partida deletada com sucesso! ✅');
+                    } catch (error) {
+                        console.error('Erro ao deletar partida:', error);
+                        alert('Erro ao deletar partida!');
+                    }
+                }
+            };
+
+            const cancelEdit = () => {
+                setCurrentMatch({ date: '', stats: {} });
+                setEditingMatchId(null);
+            };
+
+            const formatDateForDisplay = (dateString) => {
+                const [year, month, day] = dateString.split('-');
+                return `${day}/${month}/${year}`;
+            };
+
+            const sortedByGoals = [...players].sort((a, b) => b.totalGoals - a.totalGoals);
+            const sortedByAssists = [...players].sort((a, b) => b.totalAssists - a.totalAssists);
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black flex items-center justify-center">
+                        <div className="text-yellow-400 text-xl">Carregando...</div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-4">
+                    {/* Modal de Senha */}
+                    {showPasswordModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                            <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6 max-w-md w-full">
+                                <h2 className="text-2xl font-bold text-yellow-400 mb-4">🔐 Acesso Administrativo</h2>
+                                <p className="text-gray-300 mb-4">Digite a senha de administrador:</p>
+                                <input
+                                    type="password"
+                                    value={passwordInput}
+                                    onChange={(e) => setPasswordInput(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && checkPassword()}
+                                    placeholder="Senha"
+                                    className="w-full px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none mb-4"
+                                />
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={checkPassword}
+                                        className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-4 rounded-lg"
+                                    >
+                                        Entrar
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setShowPasswordModal(false);
+                                            setPasswordInput('');
+                                        }}
+                                        className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg"
+                                    >
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="max-w-6xl mx-auto">
+                        <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-lg shadow-2xl p-6 mb-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-16 h-16 rounded-full bg-black border-4 border-yellow-500 flex items-center justify-center">
+                                        <div className="text-center">
+                                            <div className="text-yellow-500 font-bold text-xs">SUB</div>
+                                            <div className="text-yellow-500 font-bold text-2xl leading-none">50</div>
+                                            <div className="text-yellow-500 font-bold text-[8px]">2019</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h1 className="text-3xl md:text-4xl font-bold text-black">Sub 50 Cinquenta</h1>
+                                        <p className="text-black font-semibold text-sm">Gerenciador de Estatísticas</p>
+                                    </div>
+                                </div>
+                                {isAdmin ? (
+                                    <button
+                                        onClick={logout}
+                                        className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg text-sm"
+                                    >
+                                        🚪 Sair
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowPasswordModal(true)}
+                                        className="bg-black hover:bg-gray-800 text-yellow-400 font-bold py-2 px-4 rounded-lg text-sm"
+                                    >
+                                        🔐 Admin
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 mb-6 overflow-x-auto">
+                            <button onClick={() => setActiveTab('rankings')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition ${activeTab === 'rankings' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700'}`}>
+                                🏆 Rankings
+                            </button>
+                            {isAdmin && (
+                                <button onClick={() => setActiveTab('newMatch')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition ${activeTab === 'newMatch' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700'}`}>
+                                    {editingMatchId ? '✏️ Editar' : '➕ Nova'} Partida
+                                </button>
+                            )}
+                            {isAdmin && (
+                                <button onClick={() => setActiveTab('players')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition ${activeTab === 'players' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700'}`}>
+                                    👥 Jogadores
+                                </button>
+                            )}
+                            <button onClick={() => setActiveTab('history')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition ${activeTab === 'history' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700'}`}>
+                                📅 Histórico
+                            </button>
+                        </div>
+
+                        {activeTab === 'rankings' && (
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                                    <h2 className="text-2xl font-bold text-yellow-400 mb-4 flex items-center gap-2">🎯 Artilharia</h2>
+                                    {sortedByGoals.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {sortedByGoals.map((player, index) => (
+                                                <div key={player.id} className={`flex items-center justify-between p-3 rounded-lg ${index === 0 ? 'bg-yellow-400 border-2 border-yellow-500' : 'bg-gray-800'}`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`font-bold text-lg ${index === 0 ? 'text-black' : 'text-yellow-400'}`}>{index + 1}º</span>
+                                                        <span className={`font-semibold ${index === 0 ? 'text-black' : 'text-white'}`}>{player.name}</span>
+                                                    </div>
+                                                    <span className={`text-2xl font-bold ${index === 0 ? 'text-black' : 'text-yellow-400'}`}>{player.totalGoals}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-gray-400 text-center py-8">Nenhum gol registrado ainda</p>
+                                    )}
+                                </div>
+
+                                <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                                    <h2 className="text-2xl font-bold text-yellow-400 mb-4 flex items-center gap-2">📈 Assistências</h2>
+                                    {sortedByAssists.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {sortedByAssists.map((player, index) => (
+                                                <div key={player.id} className={`flex items-center justify-between p-3 rounded-lg ${index === 0 ? 'bg-yellow-400 border-2 border-yellow-500' : 'bg-gray-800'}`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`font-bold text-lg ${index === 0 ? 'text-black' : 'text-yellow-400'}`}>{index + 1}º</span>
+                                                        <span className={`font-semibold ${index === 0 ? 'text-black' : 'text-white'}`}>{player.name}</span>
+                                                    </div>
+                                                    <span className={`text-2xl font-bold ${index === 0 ? 'text-black' : 'text-yellow-400'}`}>{player.totalAssists}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-gray-400 text-center py-8">Nenhuma assistência registrada ainda</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'newMatch' && isAdmin && (
+                            <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                                <h2 className="text-2xl font-bold text-yellow-400 mb-6">
+                                    {editingMatchId ? '✏️ Editar Partida' : '➕ Registrar Nova Partida'}
+                                </h2>
+                                
+                                {editingMatchId && (
+                                    <div className="bg-yellow-400 text-black p-3 rounded-lg mb-4 flex items-center justify-between">
+                                        <span className="font-semibold">Editando partida existente</span>
+                                        <button onClick={cancelEdit} className="bg-black text-yellow-400 px-3 py-1 rounded font-semibold hover:bg-gray-800">
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                )}
+                                
+                                <div className="mb-6">
+                                    <label className="block text-yellow-400 font-semibold mb-2">Data da Partida</label>
+                                    <input 
+                                        type="date" 
+                                        value={currentMatch.date} 
+                                        onChange={(e) => setCurrentMatch(prev => ({ ...prev, date: e.target.value }))} 
+                                        className="w-full px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none" 
+                                    />
+                                </div>
+
+                                {players.length > 0 ? (
+                                    <>
+                                        <div className="space-y-4 mb-6">
+                                            {players.map(player => (
+                                                <div key={player.id} className="bg-gray-800 border border-yellow-400 p-4 rounded-lg">
+                                                    <h3 className="font-semibold text-yellow-400 mb-3">{player.name}</h3>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="block text-sm text-gray-300 mb-1">Gols</label>
+                                                            <input 
+                                                                type="number" 
+                                                                min="0" 
+                                                                value={currentMatch.stats[player.id]?.goals || ''} 
+                                                                onChange={(e) => updateMatchStat(player.id, 'goals', e.target.value)} 
+                                                                placeholder="0"
+                                                                className="w-full px-3 py-2 bg-gray-900 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none" 
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm text-gray-300 mb-1">Assistências</label>
+                                                            <input 
+                                                                type="number" 
+                                                                min="0" 
+                                                                value={currentMatch.stats[player.id]?.assists || ''} 
+                                                                onChange={(e) => updateMatchStat(player.id, 'assists', e.target.value)} 
+                                                                placeholder="0"
+                                                                className="w-full px-3 py-2 bg-gray-900 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none" 
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button onClick={saveMatch} className="w-full bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-3 px-6 rounded-lg transition">
+                                            {editingMatchId ? '💾 Salvar Alterações' : '💾 Salvar Partida'}
+                                        </button>
+                                    </>
+                                ) : (
+                                    <p className="text-gray-400 text-center py-8">Adicione jogadores primeiro na aba "Jogadores"</p>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'players' && isAdmin && (
+                            <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                                <h2 className="text-2xl font-bold text-yellow-400 mb-6">Gerenciar Jogadores</h2>
+                                
+                                <div className="flex gap-2 mb-6">
+                                    <input 
+                                        type="text" 
+                                        value={newPlayerName} 
+                                        onChange={(e) => setNewPlayerName(e.target.value)} 
+                                        onKeyPress={(e) => e.key === 'Enter' && addPlayer()} 
+                                        placeholder="Nome do jogador" 
+                                        className="flex-1 px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white placeholder-gray-400 rounded-lg focus:border-yellow-300 focus:outline-none" 
+                                    />
+                                    <button onClick={addPlayer} className="bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-6 rounded-lg transition">
+                                        Adicionar
+                                    </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {players.map(player => (
+                                        <div key={player.id} className="flex items-center justify-between bg-gray-800 border border-yellow-400 p-4 rounded-lg">
+                                            <div>
+                                                <span className="font-semibold text-yellow-400">{player.name}</span>
+                                                <div className="text-sm text-gray-300 mt-1">{player.totalGoals} gols • {player.totalAssists} assistências</div>
+                                            </div>
+                                            <button onClick={() => removePlayer(player.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition">
+                                                Remover
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {players.length === 0 && (
+                                    <p className="text-gray-400 text-center py-8">Nenhum jogador cadastrado</p>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'history' && (
+                            <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                                <h2 className="text-2xl font-bold text-yellow-400 mb-6">Histórico de Partidas</h2>
+                                
+                                {matches.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {[...matches].reverse().map(match => (
+                                            <div key={match.id} className="bg-gray-800 border border-yellow-400 p-4 rounded-lg">
+                                                <div className="flex justify-between items-center mb-3">
+                                                    <div className="font-semibold text-yellow-400">
+                                                        {formatDateForDisplay(match.date)}
+                                                    </div>
+                                                    {isAdmin && (
+                                                        <div className="flex gap-2">
+                                                            <button 
+                                                                onClick={() => editMatch(match)} 
+                                                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-semibold"
+                                                            >
+                                                                ✏️ Editar
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => deleteMatch(match.id)} 
+                                                                className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-semibold"
+                                                            >
+                                                                🗑️ Deletar
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                                                    {Object.entries(match.stats).map(([playerId, stats]) => {
+                                                        const player = players.find(p => p.id === playerId);
+                                                        if (!player || (!stats.goals && !stats.assists)) return null;
+                                                        return (
+                                                            <div key={playerId} className="text-gray-300">
+                                                                <span className="font-medium text-white">{player?.name || 'Jogador removido'}:</span>
+                                                                {stats.goals > 0 && ` ${stats.goals} gol(s)`}
+                                                                {stats.goals > 0 && stats.assists > 0 && ' •'}
+                                                                {stats.assists > 0 && ` ${stats.assists} assist.(s)`}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-gray-400 text-center py-8">Nenhuma partida registrada ainda</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<Sub50StatsApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
