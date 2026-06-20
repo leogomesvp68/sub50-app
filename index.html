@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sub 50 Cinquenta - Estatisticas</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDIxb37IhllYt8R6_iRcxy1e4KlZupFXb4",
+    authDomain: "sub50-253ae.firebaseapp.com",
+    projectId: "sub50-253ae",
+    storageBucket: "sub50-253ae.firebasestorage.app",
+    messagingSenderId: "874737275056",
+    appId: "1:874737275056:web:f35150e408b63f06326b75"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const ADMIN_PASSWORD = "subcinquenta123";
+
+function Sub50StatsApp() {
+    const [players, setPlayers] = useState([]);
+    const [matches, setMatches] = useState([]);
+    const [activeTab, setActiveTab] = useState('rankings');
+    const [newPlayerName, setNewPlayerName] = useState('');
+    const [currentMatch, setCurrentMatch] = useState({ date: '', stats: {}, attendance: {}, results: {} });
+    const [editingMatchId, setEditingMatchId] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [passwordInput, setPasswordInput] = useState('');
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+
+    useEffect(() => {
+        loadData();
+        const adminStatus = sessionStorage.getItem('sub50_admin');
+        if (adminStatus === 'true') {
+            setIsAdmin(true);
+        }
+    }, []);
+
+    async function loadData() {
+        try {
+            const playersSnapshot = await db.collection('players').orderBy('name').get();
+            const playersData = playersSnapshot.docs.map(function(doc) {
+                return Object.assign({ id: doc.id }, doc.data());
+            });
+
+            const matchesSnapshot = await db.collection('matches').orderBy('date').get();
+            const matchesData = matchesSnapshot.docs.map(function(doc) {
+                return Object.assign({ id: doc.id }, doc.data());
+            });
+
+            setPlayers(playersData);
+            setMatches(matchesData);
+        } catch (error) {
+            console.error('Erro ao carregar dados:', error);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function checkPassword() {
+        if (passwordInput === ADMIN_PASSWORD) {
+            setIsAdmin(true);
+            sessionStorage.setItem('sub50_admin', 'true');
+            setShowPasswordModal(false);
+            setPasswordInput('');
+            alert('Login de administrador realizado com sucesso!');
+        } else {
+            alert('Senha incorreta!');
+            setPasswordInput('');
+        }
+    }
+
+    function logout() {
+        setIsAdmin(false);
+        sessionStorage.removeItem('sub50_admin');
+        setActiveTab('rankings');
+    }
+
+    async function addPlayer() {
+        if (!isAdmin) {
+            alert('Apenas administradores podem adicionar jogadores!');
+            return;
+        }
+        if (newPlayerName.trim()) {
+            try {
+                await db.collection('players').add({
+                    name: newPlayerName.trim(),
+                    totalGoals: 0,
+                    totalAssists: 0,
+                    totalPresence: 0,
+                    totalPoints: 0,
+                    wins: 0,
+                    draws: 0,
+                    losses: 0,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                setNewPlayerName('');
+                loadData();
+            } catch (error) {
+                console.error('Erro ao adicionar jogador:', error);
+                alert('Erro ao adicionar jogador!');
+            }
+        }
+    }
+
+    async function removePlayer(id) {
+        if (!isAdmin) {
+            alert('Apenas administradores podem remover jogadores!');
+            return;
+        }
+        if (window.confirm('Tem certeza que deseja remover este jogador?')) {
+            try {
+                await db.collection('players').doc(id).delete();
+                loadData();
+            } catch (error) {
+                console.error('Erro ao remover jogador:', error);
+                alert('Erro ao remover jogador!');
+            }
+        }
+    }
+
+    function updateMatchStat(playerId, stat, value) {
+        const numValue = Math.max(0, parseInt(value) || 0);
+        setCurrentMatch(function(prev) {
+            const currentStats = prev.stats[playerId] || { goals: 0, assists: 0 };
+            const newStats = Object.assign({}, prev.stats);
+            newStats[playerId] = {
+                goals: stat === 'goals' ? numValue : currentStats.goals,
+                assists: stat === 'assists' ? numValue : currentStats.assists
+            };
+            return Object.assign({}, prev, { stats: newStats });
+        });
+    }
+
+    function toggleAttendance(playerId) {
+        setCurrentMatch(function(prev) {
+            const newAttendance = Object.assign({}, prev.attendance);
+            newAttendance[playerId] = !prev.attendance[playerId];
+            return Object.assign({}, prev, { attendance: newAttendance });
+        });
+    }
+
+    function updateResult(playerId, result) {
+        setCurrentMatch(function(prev) {
+            const newResults = Object.assign({}, prev.results);
+            newResults[playerId] = result;
+            return Object.assign({}, prev, { results: newResults });
+        });
+    }
+
+    async function recalculateTotals(matchesList) {
+        for (const player of players) {
+            let totalGoals = 0;
+            let totalAssists = 0;
+            let totalPresence = 0;
+            let totalPoints = 0;
+            let wins = 0;
+            let draws = 0;
+            let losses = 0;
+
+            matchesList.forEach(function(match) {
+                const stats = match.stats ? match.stats[player.id] : null;
+                if (stats) {
+                    totalGoals += stats.goals || 0;
+                    totalAssists += stats.assists || 0;
+                }
+
+                if (match.attendance && match.attendance[player.id]) {
+                    totalPresence += 1;
+                }
+
+                const result = match.results ? match.results[player.id] : null;
+                if (result === 'win') {
+                    wins += 1;
+                    totalPoints += 3;
+                } else if (result === 'draw') {
+                    draws += 1;
+                    totalPoints += 1;
+                } else if (result === 'loss') {
+                    losses += 1;
+                }
+            });
+
+            await db.collection('players').doc(player.id).update({
+                totalGoals: totalGoals,
+                totalAssists: totalAssists,
+                totalPresence: totalPresence,
+                totalPoints: totalPoints,
+                wins: wins,
+                draws: draws,
+                losses: losses
+            });
+        }
+    }
+
+    async function saveMatch() {
+        if (!isAdmin) {
+            alert('Apenas administradores podem salvar partidas!');
+            return;
+        }
+        if (!currentMatch.date) {
+            alert('Por favor, informe a data da partida');
+            return;
+        }
+
+        try {
+            const matchData = {
+                date: currentMatch.date,
+                stats: currentMatch.stats,
+                attendance: currentMatch.attendance,
+                results: currentMatch.results
+            };
+
+            if (editingMatchId) {
+                await db.collection('matches').doc(editingMatchId).update(matchData);
+            } else {
+                await db.collection('matches').add(Object.assign({}, matchData, {
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                }));
+            }
+
+            const updatedMatchesSnap = await db.collection('matches').get();
+            const matchesData = updatedMatchesSnap.docs.map(function(doc) {
+                return Object.assign({ id: doc.id }, doc.data());
+            });
+
+            await recalculateTotals(matchesData);
+            await loadData();
+
+            setCurrentMatch({ date: '', stats: {}, attendance: {}, results: {} });
+            setEditingMatchId(null);
+            setActiveTab('rankings');
+            alert(editingMatchId ? 'Partida atualizada com sucesso!' : 'Partida salva com sucesso!');
+        } catch (error) {
+            console.error('Erro ao salvar partida:', error);
+            alert('Erro ao salvar partida!');
+        }
+    }
+
+    function editMatch(match) {
+        if (!isAdmin) {
+            alert('Apenas administradores podem editar partidas!');
+            return;
+        }
+        setCurrentMatch({
+            date: match.date,
+            stats: match.stats || {},
+            attendance: match.attendance || {},
+            results: match.results || {}
+        });
+        setEditingMatchId(match.id);
+        setActiveTab('newMatch');
+    }
+
+    async function deleteMatch(matchId) {
+        if (!isAdmin) {
+            alert('Apenas administradores podem deletar partidas!');
+            return;
+        }
+        if (window.confirm('Tem certeza que deseja deletar esta partida?')) {
+            try {
+                await db.collection('matches').doc(matchId).delete();
+
+                const updatedMatchesSnap = await db.collection('matches').get();
+                const matchesData = updatedMatchesSnap.docs.map(function(doc) {
+                    return Object.assign({ id: doc.id }, doc.data());
+                });
+
+                await recalculateTotals(matchesData);
+                await loadData();
+
+                alert('Partida deletada com sucesso!');
+            } catch (error) {
+                console.error('Erro ao deletar partida:', error);
+                alert('Erro ao deletar partida!');
+            }
+        }
+    }
+
+    function cancelEdit() {
+        setCurrentMatch({ date: '', stats: {}, attendance: {}, results: {} });
+        setEditingMatchId(null);
+    }
+
+    function formatDateForDisplay(dateString) {
+        const parts = dateString.split('-');
+        return parts[2] + '/' + parts[1] + '/' + parts[0];
+    }
+
+    const sortedByGoals = players.slice().sort(function(a, b) { return b.totalGoals - a.totalGoals; });
+    const sortedByAssists = players.slice().sort(function(a, b) { return b.totalAssists - a.totalAssists; });
+    const sortedByPresence = players.slice().sort(function(a, b) { return b.totalPresence - a.totalPresence; });
+    const sortedByPoints = players.slice().sort(function(a, b) {
+        if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        return (b.totalGoals - b.totalAssists) - (a.totalGoals - a.totalAssists);
+    });
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black flex items-center justify-center">
+                <div className="text-yellow-400 text-xl">Carregando...</div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black p-4">
+            {showPasswordModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6 max-w-md w-full">
+                        <h2 className="text-2xl font-bold text-yellow-400 mb-4">Acesso Administrativo</h2>
+                        <p className="text-gray-300 mb-4">Digite a senha de administrador:</p>
+                        <input
+                            type="password"
+                            value={passwordInput}
+                            onChange={function(e) { setPasswordInput(e.target.value); }}
+                            onKeyPress={function(e) { if (e.key === 'Enter') checkPassword(); }}
+                            placeholder="Senha"
+                            className="w-full px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none mb-4"
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={checkPassword} className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-4 rounded-lg">
+                                Entrar
+                            </button>
+                            <button onClick={function() { setShowPasswordModal(false); setPasswordInput(''); }} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="max-w-6xl mx-auto">
+                <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-lg shadow-2xl p-4 md:p-6 mb-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 md:gap-4">
+                            <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-black border-4 border-yellow-500 flex items-center justify-center">
+                                <div className="text-center">
+                                    <div className="text-yellow-500 font-bold text-xs">SUB</div>
+                                    <div className="text-yellow-500 font-bold text-2xl leading-none">50</div>
+                                    <div className="text-yellow-500 font-bold text-xs">2019</div>
+                                </div>
+                            </div>
+                            <div>
+                                <h1 className="text-2xl md:text-4xl font-bold text-black">Sub 50 Cinquenta</h1>
+                                <p className="text-black font-semibold text-xs md:text-sm">Gerenciador de Estatisticas</p>
+                            </div>
+                        </div>
+                        {isAdmin ? (
+                            <button onClick={logout} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 md:px-4 rounded-lg text-xs md:text-sm">
+                                Sair
+                            </button>
+                        ) : (
+                            <button onClick={function() { setShowPasswordModal(true); }} className="bg-black hover:bg-gray-800 text-yellow-400 font-bold py-2 px-3 md:px-4 rounded-lg text-xs md:text-sm">
+                                Admin
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+                    <button onClick={function() { setActiveTab('rankings'); }} className={"flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm " + (activeTab === 'rankings' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700')}>
+                        Rankings
+                    </button>
+                    <button onClick={function() { setActiveTab('presence'); }} className={"flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm " + (activeTab === 'presence' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700')}>
+                        Presenca
+                    </button>
+                    <button onClick={function() { setActiveTab('classification'); }} className={"flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm " + (activeTab === 'classification' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700')}>
+                        Classificacao
+                    </button>
+                    {isAdmin && (
+                        <button onClick={function() { setActiveTab('newMatch'); }} className={"flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm " + (activeTab === 'newMatch' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700')}>
+                            {editingMatchId ? 'Editar' : 'Nova'} Partida
+                        </button>
+                    )}
+                    {isAdmin && (
+                        <button onClick={function() { setActiveTab('players'); }} className={"flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm " + (activeTab === 'players' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700')}>
+                            Jogadores
+                        </button>
+                    )}
+                    <button onClick={function() { setActiveTab('history'); }} className={"flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm " + (activeTab === 'history' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700')}>
+                        Historico
+                    </button>
+                </div>
+
+                {activeTab === 'rankings' && (
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                            <h2 className="text-2xl font-bold text-yellow-400 mb-4">Artilharia</h2>
+                            {sortedByGoals.length > 0 ? (
+                                <div className="space-y-3">
+                                    {sortedByGoals.map(function(player, index) {
+                                        return (
+                                            <div key={player.id} className={"flex items-center justify-between p-3 rounded-lg " + (index === 0 ? 'bg-yellow-400 border-2 border-yellow-500' : 'bg-gray-800')}>
+                                                <div className="flex items-center gap-3">
+                                                    <span className={"font-bold text-lg " + (index === 0 ? 'text-black' : 'text-yellow-400')}>{index + 1}o</span>
+                                                    <span className={"font-semibold " + (index === 0 ? 'text-black' : 'text-white')}>{player.name}</span>
+                                                </div>
+                                                <span className={"text-2xl font-bold " + (index === 0 ? 'text-black' : 'text-yellow-400')}>{player.totalGoals}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-gray-400 text-center py-8">Nenhum gol registrado ainda</p>
+                            )}
+                        </div>
+
+                        <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                            <h2 className="text-2xl font-bold text-yellow-400 mb-4">Assistencias</h2>
+                            {sortedByAssists.length > 0 ? (
+                                <div className="space-y-3">
+                                    {sortedByAssists.map(function(player, index) {
+                                        return (
+                                            <div key={player.id} className={"flex items-center justify-between p-3 rounded-lg " + (index === 0 ? 'bg-yellow-400 border-2 border-yellow-500' : 'bg-gray-800')}>
+                                                <div className="flex items-center gap-3">
+                                                    <span className={"font-bold text-lg " + (index === 0 ? 'text-black' : 'text-yellow-400')}>{index + 1}o</span>
+                                                    <span className={"font-semibold " + (index === 0 ? 'text-black' : 'text-white')}>{player.name}</span>
+                                                </div>
+                                                <span className={"text-2xl font-bold " + (index === 0 ? 'text-black' : 'text-yellow-400')}>{player.totalAssists}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-gray-400 text-center py-8">Nenhuma assistencia registrada ainda</p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'presence' && (
+                    <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                        <h2 className="text-2xl font-bold text-yellow-400 mb-4">Ranking de Presenca</h2>
+                        {sortedByPresence.length > 0 ? (
+                            <div className="space-y-3">
+                                {sortedByPresence.map(function(player, index) {
+                                    return (
+                                        <div key={player.id} className={"flex items-center justify-between p-3 rounded-lg " + (index === 0 ? 'bg-yellow-400 border-2 border-yellow-500' : 'bg-gray-800')}>
+                                            <div className="flex items-center gap-3">
+                                                <span className={"font-bold text-lg " + (index === 0 ? 'text-black' : 'text-yellow-400')}>{index + 1}o</span>
+                                                <span className={"font-semibold " + (index === 0 ? 'text-black' : 'text-white')}>{player.name}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={"text-2xl font-bold " + (index === 0 ? 'text-black' : 'text-yellow-400')}>{player.totalPresence}</span>
+                                                <div className={"text-xs " + (index === 0 ? 'text-black' : 'text-gray-400')}>presencas</div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p className="text-gray-400 text-center py-8">Nenhuma presenca registrada ainda</p>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'classification' && (
+                    <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6 overflow-x-auto">
+                        <h2 className="text-2xl font-bold text-yellow-400 mb-4">Classificacao Individual</h2>
+                        {sortedByPoints.length > 0 ? (
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b-2 border-yellow-400">
+                                        <th className="p-2 text-yellow-400 font-bold">#</th>
+                                        <th className="p-2 text-yellow-400 font-bold">Jogador</th>
+                                        <th className="p-2 text-yellow-400 font-bold text-center">V</th>
+                                        <th className="p-2 text-yellow-400 font-bold text-center">E</th>
+                                        <th className="p-2 text-yellow-400 font-bold text-center">D</th>
+                                        <th className="p-2 text-yellow-400 font-bold text-center">PTS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedByPoints.map(function(player, index) {
+                                        return (
+                                            <tr key={player.id} className={"border-b border-gray-700 " + (index === 0 ? 'bg-yellow-400' : '')}>
+                                                <td className={"p-2 font-bold " + (index === 0 ? 'text-black' : 'text-yellow-400')}>{index + 1}</td>
+                                                <td className={"p-2 font-semibold " + (index === 0 ? 'text-black' : 'text-white')}>{player.name}</td>
+                                                <td className={"p-2 text-center " + (index === 0 ? 'text-black' : 'text-gray-300')}>{player.wins || 0}</td>
+                                                <td className={"p-2 text-center " + (index === 0 ? 'text-black' : 'text-gray-300')}>{player.draws || 0}</td>
+                                                <td className={"p-2 text-center " + (index === 0 ? 'text-black' : 'text-gray-300')}>{player.losses || 0}</td>
+                                                <td className={"p-2 text-center font-bold text-lg " + (index === 0 ? 'text-black' : 'text-yellow-400')}>{player.totalPoints || 0}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <p className="text-gray-400 text-center py-8">Nenhum resultado registrado ainda</p>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'newMatch' && isAdmin && (
+                    <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                        <h2 className="text-2xl font-bold text-yellow-400 mb-6">
+                            {editingMatchId ? 'Editar Partida' : 'Registrar Nova Partida'}
+                        </h2>
+
+                        {editingMatchId && (
+                            <div className="bg-yellow-400 text-black p-3 rounded-lg mb-4 flex items-center justify-between">
+                                <span className="font-semibold">Editando partida existente</span>
+                                <button onClick={cancelEdit} className="bg-black text-yellow-400 px-3 py-1 rounded font-semibold hover:bg-gray-800">
+                                    Cancelar
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="mb-6">
+                            <label className="block text-yellow-400 font-semibold mb-2">Data da Partida</label>
+                            <input
+                                type="date"
+                                value={currentMatch.date}
+                                onChange={function(e) { setCurrentMatch(Object.assign({}, currentMatch, { date: e.target.value })); }}
+                                className="w-full px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none"
+                            />
+                        </div>
+
+                        {players.length > 0 ? (
+                            <div>
+                                <div className="space-y-4 mb-6">
+                                    {players.map(function(player) {
+                                        return (
+                                            <div key={player.id} className="bg-gray-800 border border-yellow-400 p-4 rounded-lg">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h3 className="font-semibold text-yellow-400">{player.name}</h3>
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={currentMatch.attendance[player.id] || false}
+                                                            onChange={function() { toggleAttendance(player.id); }}
+                                                            className="w-5 h-5"
+                                                        />
+                                                        <span className="text-white font-semibold">Presente</span>
+                                                    </label>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4 mb-3">
+                                                    <div>
+                                                        <label className="block text-sm text-gray-300 mb-1">Gols</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={currentMatch.stats[player.id] ? currentMatch.stats[player.id].goals || '' : ''}
+                                                            onChange={function(e) { updateMatchStat(player.id, 'goals', e.target.value); }}
+                                                            placeholder="0"
+                                                            className="w-full px-3 py-2 bg-gray-900 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm text-gray-300 mb-1">Assistencias</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={currentMatch.stats[player.id] ? currentMatch.stats[player.id].assists || '' : ''}
+                                                            onChange={function(e) { updateMatchStat(player.id, 'assists', e.target.value); }}
+                                                            placeholder="0"
+                                                            className="w-full px-3 py-2 bg-gray-900 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm text-gray-300 mb-2">Resultado Individual</label>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={function() { updateResult(player.id, 'win'); }}
+                                                            className={"flex-1 py-2 px-3 rounded font-semibold transition " + (currentMatch.results[player.id] === 'win' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')}
+                                                        >
+                                                            Vitoria
+                                                        </button>
+                                                        <button
+                                                            onClick={function() { updateResult(player.id, 'draw'); }}
+                                                            className={"flex-1 py-2 px-3 rounded font-semibold transition " + (currentMatch.results[player.id] === 'draw' ? 'bg-yellow-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')}
+                                                        >
+                                                            Empate
+                                                        </button>
+                                                        <button
+                                                            onClick={function() { updateResult(player.id, 'loss'); }}
+                                                            className={"flex-1 py-2 px-3 rounded font-semibold transition " + (currentMatch.results[player.id] === 'loss' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')}
+                                                        >
+                                                            Derrota
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <button onClick={saveMatch} className="w-full bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-3 px-6 rounded-lg transition">
+                                    {editingMatchId ? 'Salvar Alteracoes' : 'Salvar Partida'}
+                                </button>
+                            </div>
+                        ) : (
+                            <p className="text-gray-400 text-center py-8">Adicione jogadores primeiro na aba "Jogadores"</p>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'players' && isAdmin && (
+                    <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                        <h2 className="text-2xl font-bold text-yellow-400 mb-6">Gerenciar Jogadores</h2>
+
+                        <div className="flex gap-2 mb-6">
+                            <input
+                                type="text"
+                                value={newPlayerName}
+                                onChange={function(e) { setNewPlayerName(e.target.value); }}
+                                onKeyPress={function(e) { if (e.key === 'Enter') addPlayer(); }}
+                                placeholder="Nome do jogador"
+                                className="flex-1 px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white placeholder-gray-400 rounded-lg focus:border-yellow-300 focus:outline-none"
+                            />
+                            <button onClick={addPlayer} className="bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-6 rounded-lg transition">
+                                Adicionar
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {players.map(function(player) {
+                                return (
+                                    <div key={player.id} className="flex items-center justify-between bg-gray-800 border border-yellow-400 p-4 rounded-lg">
+                                        <div>
+                                            <span className="font-semibold text-yellow-400">{player.name}</span>
+                                            <div className="text-sm text-gray-300 mt-1">
+                                                {player.totalGoals} gols - {player.totalAssists} assists - {player.totalPresence} presencas - {player.totalPoints} pts
+                                            </div>
+                                        </div>
+                                        <button onClick={function() { removePlayer(player.id); }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition">
+                                            Remover
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {players.length === 0 && (
+                            <p className="text-gray-400 text-center py-8">Nenhum jogador cadastrado</p>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'history' && (
+                    <div className="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">
+                        <h2 className="text-2xl font-bold text-yellow-400 mb-6">Historico de Partidas</h2>
+
+                        {matches.length > 0 ? (
+                            <div className="space-y-4">
+                                {matches.slice().reverse().map(function(match) {
+                                    return (
+                                        <div key={match.id} className="bg-gray-800 border border-yellow-400 p-4 rounded-lg">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <div className="font-semibold text-yellow-400">
+                                                    {formatDateForDisplay(match.date)}
+                                                </div>
+                                                {isAdmin && (
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={function() { editMatch(match); }}
+                                                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-semibold"
+                                                        >
+                                                            Editar
+                                                        </button>
+                                                        <button
+                                                            onClick={function() { deleteMatch(match.id); }}
+                                                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-semibold"
+                                                        >
+                                                            Deletar
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                {players.map(function(player) {
+                                                    const stats = match.stats ? match.stats[player.id] : null;
+                                                    const attended = match.attendance ? match.attendance[player.id] : null;
+                                                    const result = match.results ? match.results[player.id] : null;
+
+                                                    if (!stats && !attended && !result) return null;
+
+                                                    return (
+                                                        <div key={player.id} className="text-sm text-gray-300 flex items-center gap-2 flex-wrap">
+                                                            <span className="font-medium text-white">{player.name}:</span>
+                                                            {stats && stats.goals > 0 && <span>{stats.goals} gol(s)</span>}
+                                                            {stats && stats.assists > 0 && <span>- {stats.assists} assist.</span>}
+                                                            {result === 'win' && <span className="text-green-400">- Vitoria</span>}
+                                                            {result === 'draw' && <span className="text-yellow-400">- Empate</span>}
+                                                            {result === 'loss' && <span className="text-red-400">- Derrota</span>}
+                                                            {attended && <span className="text-blue-400">- Presente</span>}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p className="text-gray-400 text-center py-8">Nenhuma partida registrada ainda</p>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+ReactDOM.render(<Sub50StatsApp />, document.getElementById('root'));
+</script>
+</body>
+</html>
