@@ -370,7 +370,7 @@ function rankingsHTML(){
 
 function rankRow(player, index, value){
     return '<div class="flex items-center justify-between p-3 rounded-lg ' + (index===0?'bg-yellow-400 border-2 border-yellow-500':'bg-gray-800') + '">' +
-        '<div class="flex items-center gap-3"><span class="font-bold text-lg ' + (index===0?'text-black':'text-yellow-400') + '">' + (index+1) + 'o</span>' +
+        '<div class="flex items-center gap-3"><span class="font-bold text-lg ' + (index===0?'text-black':'text-yellow-400') + '">' + (index+1) + '</span>' +
         '<span class="font-semibold ' + (index===0?'text-black':'text-white') + '">' + escapeHtml(player.name) + '</span></div>' +
         '<span class="text-2xl font-bold ' + (index===0?'text-black':'text-yellow-400') + '">' + value + '</span></div>';
 }
