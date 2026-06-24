@@ -8,9 +8,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
-<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-black min-h-screen">
+<body class="bg-gray-900 min-h-screen">
 <div id="root" class="p-4"></div>
-
 <script>
 var firebaseConfig = {
     apiKey: "AIzaSyDIxb37IhllYt8R6_iRcxy1e4KlZupFXb4",
@@ -20,12 +19,9 @@ var firebaseConfig = {
     messagingSenderId: "874737275056",
     appId: "1:874737275056:web:f35150e408b63f06326b75"
 };
-
 firebase.initializeApp(firebaseConfig);
 var db = firebase.firestore();
-
 var ADMIN_PASSWORD = "subcinquenta123";
-
 var players = [];
 var matches = [];
 var activeTab = 'rankings';
@@ -37,44 +33,32 @@ var showPasswordModal = false;
 var passwordInputValue = '';
 var loading = true;
 
-function loadData(){
+function loadData() {
     loading = true;
     render();
-    var p1 = db.collection('players').orderBy('name').get();
-    var p2 = db.collection('matches').orderBy('date').get();
-    Promise.all([p1, p2]).then(function(results){
-        players = results[0].docs.map(function(d){
-            var obj = d.data();
-            obj.id = d.id;
-            return obj;
-        });
-        matches = results[1].docs.map(function(d){
-            var obj = d.data();
-            obj.id = d.id;
-            return obj;
-        });
+    Promise.all([
+        db.collection('players').orderBy('name').get(),
+        db.collection('matches').orderBy('date').get()
+    ]).then(function(results) {
+        players = results[0].docs.map(function(d) { var o = d.data(); o.id = d.id; return o; });
+        matches = results[1].docs.map(function(d) { var o = d.data(); o.id = d.id; return o; });
         loading = false;
         render();
-    }).catch(function(error){
-        console.error('Erro ao carregar dados:', error);
-        loading = false;
-        render();
-    });
+    }).catch(function(e) { console.error(e); loading = false; render(); });
 }
 
-function setTab(tab){ activeTab = tab; render(); }
+function setTab(tab) { activeTab = tab; render(); }
+function openAdminModal() { showPasswordModal = true; render(); }
+function closeAdminModal() { showPasswordModal = false; passwordInputValue = ''; render(); }
 
-function openAdminModal(){ showPasswordModal = true; render(); }
-function closeAdminModal(){ showPasswordModal = false; passwordInputValue = ''; render(); }
-
-function checkPassword(){
-    if(passwordInputValue === ADMIN_PASSWORD){
+function checkPassword() {
+    if (passwordInputValue === ADMIN_PASSWORD) {
         isAdmin = true;
         sessionStorage.setItem('sub50_admin', 'true');
         showPasswordModal = false;
         passwordInputValue = '';
         render();
-        alert('Login de administrador realizado com sucesso!');
+        alert('Login realizado com sucesso!');
     } else {
         alert('Senha incorreta!');
         passwordInputValue = '';
@@ -82,463 +66,340 @@ function checkPassword(){
     }
 }
 
-function logout(){
+function logout() {
     isAdmin = false;
     sessionStorage.removeItem('sub50_admin');
     activeTab = 'rankings';
     render();
 }
 
-function addPlayer(){
-    if(!isAdmin){ alert('Apenas administradores podem adicionar jogadores!'); return; }
+function addPlayer() {
+    if (!isAdmin) { alert('Apenas administradores podem adicionar jogadores!'); return; }
     var name = newPlayerNameValue.trim();
-    if(name){
+    if (name) {
         db.collection('players').add({
-            name: name,
-            totalGoals: 0,
-            totalAssists: 0,
-            totalPresence: 0,
-            totalPoints: 0,
-            wins: 0,
-            draws: 0,
-            losses: 0,
+            name: name, totalGoals: 0, totalAssists: 0,
+            totalPresence: 0, totalPoints: 0, wins: 0, draws: 0, losses: 0,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        }).then(function(){
-            newPlayerNameValue = '';
-            loadData();
-        }).catch(function(error){
-            console.error('Erro ao adicionar jogador:', error);
-            alert('Erro ao adicionar jogador!');
-        });
+        }).then(function() { newPlayerNameValue = ''; loadData(); })
+        .catch(function(e) { console.error(e); alert('Erro ao adicionar jogador!'); });
     }
 }
 
-function removePlayer(id){
-    if(!isAdmin){ alert('Apenas administradores podem remover jogadores!'); return; }
-    if(confirm('Tem certeza que deseja remover este jogador?')){
-        db.collection('players').doc(id).delete().then(function(){
-            loadData();
-        }).catch(function(error){
-            console.error('Erro ao remover jogador:', error);
-            alert('Erro ao remover jogador!');
-        });
+function removePlayer(id) {
+    if (!isAdmin) { alert('Apenas administradores podem remover jogadores!'); return; }
+    if (confirm('Tem certeza que deseja remover este jogador?')) {
+        db.collection('players').doc(id).delete()
+        .then(function() { loadData(); })
+        .catch(function(e) { console.error(e); alert('Erro ao remover jogador!'); });
     }
 }
 
-function onStatInput(playerId, stat, value){
-    var numValue = Math.max(0, parseInt(value) || 0);
-    if(!currentMatch.stats[playerId]) currentMatch.stats[playerId] = { goals: 0, assists: 0 };
-    currentMatch.stats[playerId][stat] = numValue;
+function onStatInput(playerId, stat, value) {
+    var n = Math.max(0, parseInt(value) || 0);
+    if (!currentMatch.stats[playerId]) currentMatch.stats[playerId] = { goals: 0, assists: 0 };
+    currentMatch.stats[playerId][stat] = n;
 }
 
-function toggleAttendance(playerId){
+function toggleAttendance(playerId) {
     currentMatch.attendance[playerId] = !currentMatch.attendance[playerId];
-    renderNewMatchTab();
+    renderTabContent();
 }
 
-function setResult(playerId, result){
+function setResult(playerId, result) {
     currentMatch.results[playerId] = result;
-    renderNewMatchTab();
+    renderTabContent();
 }
 
-function cancelEdit(){
+function cancelEdit() {
     currentMatch = { date: '', stats: {}, attendance: {}, results: {} };
     editingMatchId = null;
     render();
 }
 
-function recalcTotals(matchesList, callback){
-    var index = 0;
-    function next(){
-        if(index >= players.length){ callback(); return; }
-        var player = players[index];
-        var totalGoals = 0, totalAssists = 0, totalPresence = 0, totalPoints = 0, wins = 0, draws = 0, losses = 0;
-        matchesList.forEach(function(m){
-            var s = m.stats && m.stats[player.id];
-            if(s){ totalGoals += s.goals || 0; totalAssists += s.assists || 0; }
-            if(m.attendance && m.attendance[player.id]) totalPresence++;
-            var r = m.results && m.results[player.id];
-            if(r === 'win'){ wins++; totalPoints += 3; }
-            else if(r === 'draw'){ draws++; totalPoints += 1; }
-            else if(r === 'loss'){ losses++; }
+function recalcTotals(matchesList, callback) {
+    var i = 0;
+    function next() {
+        if (i >= players.length) { callback(); return; }
+        var p = players[i];
+        var tg = 0, ta = 0, tp = 0, tpts = 0, w = 0, dr = 0, l = 0;
+        matchesList.forEach(function(m) {
+            var s = m.stats && m.stats[p.id];
+            if (s) { tg += s.goals || 0; ta += s.assists || 0; }
+            if (m.attendance && m.attendance[p.id]) tp++;
+            var r = m.results && m.results[p.id];
+            if (r === 'win') { w++; tpts += 3; }
+            else if (r === 'draw') { dr++; tpts += 1; }
+            else if (r === 'loss') { l++; }
         });
-        db.collection('players').doc(player.id).update({
-            totalGoals: totalGoals, totalAssists: totalAssists, totalPresence: totalPresence,
-            totalPoints: totalPoints, wins: wins, draws: draws, losses: losses
-        }).then(function(){
-            index++;
-            next();
-        });
+        db.collection('players').doc(p.id).update({
+            totalGoals: tg, totalAssists: ta, totalPresence: tp,
+            totalPoints: tpts, wins: w, draws: dr, losses: l
+        }).then(function() { i++; next(); });
     }
     next();
 }
 
-function saveMatch(){
-    if(!isAdmin){ alert('Apenas administradores podem salvar partidas!'); return; }
-    if(!currentMatch.date){ alert('Por favor, informe a data da partida'); return; }
-
-    var data = {
-        date: currentMatch.date,
-        stats: currentMatch.stats,
-        attendance: currentMatch.attendance,
-        results: currentMatch.results
-    };
-
-    var savePromise;
+function saveMatch() {
+    if (!isAdmin) { alert('Apenas administradores podem salvar partidas!'); return; }
+    if (!currentMatch.date) { alert('Por favor, informe a data da partida'); return; }
+    var data = { date: currentMatch.date, stats: currentMatch.stats, attendance: currentMatch.attendance, results: currentMatch.results };
     var wasEditing = editingMatchId;
-    if(editingMatchId){
-        savePromise = db.collection('matches').doc(editingMatchId).update(data);
-    } else {
-        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-        savePromise = db.collection('matches').add(data);
-    }
-
-    savePromise.then(function(){
-        return db.collection('matches').get();
-    }).then(function(snap){
-        var matchesData = snap.docs.map(function(d){
-            var obj = d.data();
-            obj.id = d.id;
-            return obj;
-        });
-        recalcTotals(matchesData, function(){
+    var promise = editingMatchId
+        ? db.collection('matches').doc(editingMatchId).update(data)
+        : db.collection('matches').add(Object.assign({}, data, { createdAt: firebase.firestore.FieldValue.serverTimestamp() }));
+    promise.then(function() { return db.collection('matches').get(); })
+    .then(function(snap) {
+        var ml = snap.docs.map(function(d) { var o = d.data(); o.id = d.id; return o; });
+        recalcTotals(ml, function() {
             currentMatch = { date: '', stats: {}, attendance: {}, results: {} };
             editingMatchId = null;
             activeTab = 'rankings';
             loadData();
-            alert(wasEditing ? 'Partida atualizada com sucesso!' : 'Partida salva com sucesso!');
+            alert(wasEditing ? 'Partida atualizada!' : 'Partida salva!');
         });
-    }).catch(function(error){
-        console.error('Erro ao salvar partida:', error);
-        alert('Erro ao salvar partida!');
-    });
+    }).catch(function(e) { console.error(e); alert('Erro ao salvar partida!'); });
 }
 
-function editMatch(matchId){
-    if(!isAdmin){ alert('Apenas administradores podem editar partidas!'); return; }
-    var match = null;
-    for(var i=0;i<matches.length;i++){ if(matches[i].id === matchId){ match = matches[i]; break; } }
-    if(!match) return;
+function editMatch(matchId) {
+    if (!isAdmin) { alert('Apenas administradores podem editar partidas!'); return; }
+    var m = null;
+    for (var i = 0; i < matches.length; i++) { if (matches[i].id === matchId) { m = matches[i]; break; } }
+    if (!m) return;
     currentMatch = {
-        date: match.date,
-        stats: match.stats ? JSON.parse(JSON.stringify(match.stats)) : {},
-        attendance: match.attendance ? JSON.parse(JSON.stringify(match.attendance)) : {},
-        results: match.results ? JSON.parse(JSON.stringify(match.results)) : {}
+        date: m.date,
+        stats: m.stats ? JSON.parse(JSON.stringify(m.stats)) : {},
+        attendance: m.attendance ? JSON.parse(JSON.stringify(m.attendance)) : {},
+        results: m.results ? JSON.parse(JSON.stringify(m.results)) : {}
     };
     editingMatchId = matchId;
     activeTab = 'newMatch';
     render();
 }
 
-function deleteMatch(matchId){
-    if(!isAdmin){ alert('Apenas administradores podem deletar partidas!'); return; }
-    if(confirm('Tem certeza que deseja deletar esta partida?')){
-        db.collection('matches').doc(matchId).delete().then(function(){
-            return db.collection('matches').get();
-        }).then(function(snap){
-            var matchesData = snap.docs.map(function(d){
-                var obj = d.data();
-                obj.id = d.id;
-                return obj;
-            });
-            recalcTotals(matchesData, function(){
-                loadData();
-                alert('Partida deletada com sucesso!');
-            });
-        }).catch(function(error){
-            console.error('Erro ao deletar partida:', error);
-            alert('Erro ao deletar partida!');
-        });
+function deleteMatch(matchId) {
+    if (!isAdmin) { alert('Apenas administradores podem deletar partidas!'); return; }
+    if (confirm('Tem certeza que deseja deletar esta partida?')) {
+        db.collection('matches').doc(matchId).delete()
+        .then(function() { return db.collection('matches').get(); })
+        .then(function(snap) {
+            var ml = snap.docs.map(function(d) { var o = d.data(); o.id = d.id; return o; });
+            recalcTotals(ml, function() { loadData(); alert('Partida deletada!'); });
+        }).catch(function(e) { console.error(e); alert('Erro ao deletar partida!'); });
     }
 }
 
-function formatDate(dateStr){
-    var parts = dateStr.split('-');
-    return parts[2] + '/' + parts[1] + '/' + parts[0];
-}
+function formatDate(s) { var p = s.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-function escapeHtml(str){
-    if(!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+var LOGO_SVG = '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+    '<circle cx="100" cy="100" r="98" fill="#1a1a1a"/>' +
+    '<circle cx="100" cy="100" r="98" fill="none" stroke="#F5C518" stroke-width="5"/>' +
+    '<circle cx="100" cy="100" r="72" fill="none" stroke="#F5C518" stroke-width="4"/>' +
+    '<path d="M 28 122 A 72 72 0 0 0 172 122 Z" fill="#F5C518"/>' +
+    '<defs>' +
+    '<path id="tarc" d="M 18 92 A 83 83 0 0 1 182 92"/>' +
+    '<path id="barc" d="M 20 136 A 83 83 0 0 0 180 136"/>' +
+    '</defs>' +
+    '<text fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="29" letter-spacing="13">' +
+    '<textPath href="#tarc" startOffset="50%" text-anchor="middle">SUB</textPath></text>' +
+    '<text x="100" y="116" text-anchor="middle" fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="72">50</text>' +
+    '<text x="100" y="139" text-anchor="middle" fill="#1a1a1a" font-family="Arial Black,Arial" font-weight="900" font-size="19">2019</text>' +
+    '<text fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="19" letter-spacing="3">' +
+    '<textPath href="#barc" startOffset="50%" text-anchor="middle">CINQUENTA</textPath></text>' +
+    '</svg>';
 
-function render(){
+function render() {
     var root = document.getElementById('root');
-    if(loading){
-        root.innerHTML = '<div class="min-h-screen flex items-center justify-center"><div class="text-yellow-400 text-xl">Carregando...</div></div>';
-        return;
-    }
+    if (loading) { root.innerHTML = '<div class="min-h-screen flex items-center justify-center"><div class="text-yellow-400 text-2xl">Carregando...</div></div>'; return; }
 
-    var html = '';
-
-    if(showPasswordModal){
-        html += '<div class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">' +
+    var modal = '';
+    if (showPasswordModal) {
+        modal = '<div class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">' +
             '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6 max-w-md w-full">' +
             '<h2 class="text-2xl font-bold text-yellow-400 mb-4">Acesso Administrativo</h2>' +
-            '<p class="text-gray-300 mb-4">Digite a senha de administrador:</p>' +
-            '<input id="password-input" type="password" placeholder="Senha" class="w-full px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none mb-4" />' +
+            '<input id="pw" type="password" placeholder="Senha" class="w-full px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white rounded-lg mb-4"/>' +
             '<div class="flex gap-2">' +
-            '<button onclick="checkPassword()" class="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-4 rounded-lg">Entrar</button>' +
-            '<button onclick="closeAdminModal()" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Cancelar</button>' +
+            '<button onclick="checkPassword()" class="flex-1 bg-yellow-400 text-black font-bold py-2 rounded-lg">Entrar</button>' +
+            '<button onclick="closeAdminModal()" class="flex-1 bg-gray-700 text-white font-bold py-2 rounded-lg">Cancelar</button>' +
             '</div></div></div>';
     }
 
-    html += '<div class="max-w-6xl mx-auto">' +
-        '<div class="bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-lg shadow-2xl p-4 md:p-6 mb-6">' +
+    var tabs = '<div class="flex gap-2 mb-6 overflow-x-auto pb-2">' +
+        tb('rankings','Rankings') + tb('presence','Presenca') + tb('classification','Classificacao') +
+        (isAdmin ? tb('newMatch', editingMatchId ? 'Editar Partida' : 'Nova Partida') : '') +
+        (isAdmin ? tb('players','Jogadores') : '') +
+        tb('history','Historico') + '</div>';
+
+    var header = '<div class="bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-lg shadow-2xl p-4 mb-6">' +
         '<div class="flex items-center justify-between">' +
-        '<div class="flex items-center gap-2 md:gap-4">' +
-        '<div style="width:64px;height:64px;flex-shrink:0">' +
-        '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">' +
-        '<circle cx="100" cy="100" r="99" fill="#1a1a1a"/>' +
-        '<circle cx="100" cy="100" r="99" fill="none" stroke="#F5C518" stroke-width="6"/>' +
-        '<circle cx="100" cy="100" r="68" fill="#1a1a1a" stroke="#F5C518" stroke-width="5"/>' +
-        '<path d="M 32 118 A 68 68 0 0 0 168 118 Z" fill="#F5C518"/>' +
-        '<defs>' +
-        '<path id="top-arc" d="M 15 95 A 85 85 0 0 1 185 95"/>' +
-        '<path id="bottom-arc" d="M 18 130 A 85 85 0 0 0 182 130"/>' +
-        '</defs>' +
-        '<text fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="28" letter-spacing="12"><textPath href="#top-arc" startOffset="50%" text-anchor="middle">SUB</textPath></text>' +
-        '<text x="100" y="112" text-anchor="middle" fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="68">50</text>' +
-        '<text x="100" y="136" text-anchor="middle" fill="#1a1a1a" font-family="Arial Black,Arial" font-weight="900" font-size="20">2019</text>' +
-        '<text fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="22" letter-spacing="4"><textPath href="#bottom-arc" startOffset="50%" text-anchor="middle">CINQUENTA</textPath></text>' +
-        '</svg></div>' +
-        '<div><h1 class="text-2xl md:text-4xl font-bold text-black">Sub 50 Cinquenta</h1><p class="text-black font-semibold text-xs md:text-sm">Gerenciador de Estatisticas</p></div>' +
-        '</div>' +
+        '<div class="flex items-center gap-3">' + LOGO_SVG +
+        '<div><h1 class="text-2xl md:text-4xl font-bold text-black">Sub 50 Cinquenta</h1>' +
+        '<p class="text-black font-semibold text-sm">Gerenciador de Estatisticas</p></div></div>' +
         (isAdmin
-            ? '<button onclick="logout()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 md:px-4 rounded-lg text-xs md:text-sm">Sair</button>'
-            : '<button onclick="openAdminModal()" class="bg-black hover:bg-gray-800 text-yellow-400 font-bold py-2 px-3 md:px-4 rounded-lg text-xs md:text-sm">Admin</button>') +
-        '</div></div>' +
-        '<div class="flex gap-2 mb-6 overflow-x-auto pb-2">' +
-        tabButton('rankings','Rankings') +
-        tabButton('presence','Presenca') +
-        tabButton('classification','Classificacao') +
-        (isAdmin ? tabButton('newMatch', editingMatchId ? 'Editar Partida' : 'Nova Partida') : '') +
-        (isAdmin ? tabButton('players','Jogadores') : '') +
-        tabButton('history','Historico') +
-        '</div>' +
-        '<div id="tab-content"></div>' +
-        '</div>';
+            ? '<button onclick="logout()" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg">Sair</button>'
+            : '<button onclick="openAdminModal()" class="bg-black text-yellow-400 font-bold py-2 px-4 rounded-lg">Admin</button>') +
+        '</div></div>';
 
-    root.innerHTML = html;
+    root.innerHTML = modal + '<div class="max-w-6xl mx-auto">' + header + tabs + '<div id="tc"></div></div>';
 
-    if(showPasswordModal){
-        var pwInput = document.getElementById('password-input');
-        pwInput.value = passwordInputValue;
-        pwInput.addEventListener('input', function(e){ passwordInputValue = e.target.value; });
-        pwInput.addEventListener('keypress', function(e){ if(e.key === 'Enter') checkPassword(); });
-        pwInput.focus();
+    if (showPasswordModal) {
+        var pw = document.getElementById('pw');
+        pw.value = passwordInputValue;
+        pw.addEventListener('input', function(e) { passwordInputValue = e.target.value; });
+        pw.addEventListener('keypress', function(e) { if (e.key === 'Enter') checkPassword(); });
+        pw.focus();
     }
-
     renderTabContent();
 }
 
-function tabButton(tab, label){
-    var isActive = activeTab === tab;
-    return '<button onclick="setTab(\'' + tab + '\')" class="px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm ' + (isActive ? 'bg-yellow-400 text-black shadow-lg' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700') + '">' + label + '</button>';
+function tb(tab, label) {
+    return '<button onclick="setTab(\'' + tab + '\')" class="px-4 py-2 rounded-lg font-semibold whitespace-nowrap text-sm ' +
+        (activeTab === tab ? 'bg-yellow-400 text-black' : 'bg-gray-800 text-yellow-400 hover:bg-gray-700') + '">' + label + '</button>';
 }
 
-function renderTabContent(){
-    var container = document.getElementById('tab-content');
-    if(!container) return;
-
-    if(activeTab === 'rankings') container.innerHTML = rankingsHTML();
-    else if(activeTab === 'presence') container.innerHTML = presenceHTML();
-    else if(activeTab === 'classification') container.innerHTML = classificationHTML();
-    else if(activeTab === 'newMatch' && isAdmin){ container.innerHTML = newMatchHTML(); attachNewMatchListeners(); }
-    else if(activeTab === 'players' && isAdmin){ container.innerHTML = playersHTML(); attachPlayersListeners(); }
-    else if(activeTab === 'history') container.innerHTML = historyHTML();
-    else container.innerHTML = '';
+function renderTabContent() {
+    var tc = document.getElementById('tc');
+    if (!tc) return;
+    if (activeTab === 'rankings') tc.innerHTML = rankingsHTML();
+    else if (activeTab === 'presence') tc.innerHTML = presenceHTML();
+    else if (activeTab === 'classification') tc.innerHTML = classHTML();
+    else if (activeTab === 'newMatch' && isAdmin) { tc.innerHTML = newMatchHTML(); bindMatch(); }
+    else if (activeTab === 'players' && isAdmin) { tc.innerHTML = playersHTML(); bindPlayers(); }
+    else if (activeTab === 'history') tc.innerHTML = historyHTML();
 }
 
-function renderNewMatchTab(){
-    var container = document.getElementById('tab-content');
-    if(container){ container.innerHTML = newMatchHTML(); attachNewMatchListeners(); }
+function rankRow(p, i, val) {
+    return '<div class="flex items-center justify-between p-3 rounded-lg ' + (i===0?'bg-yellow-400':'bg-gray-800') + '">' +
+        '<div class="flex items-center gap-3"><span class="font-bold text-lg ' + (i===0?'text-black':'text-yellow-400') + '">' + (i+1) + '</span>' +
+        '<span class="font-semibold ' + (i===0?'text-black':'text-white') + '">' + esc(p.name) + '</span></div>' +
+        '<span class="text-2xl font-bold ' + (i===0?'text-black':'text-yellow-400') + '">' + val + '</span></div>';
 }
 
-function rankingsHTML(){
-    var byGoals = players.slice().sort(function(a,b){ return b.totalGoals - a.totalGoals; });
-    var byAssists = players.slice().sort(function(a,b){ return b.totalAssists - a.totalAssists; });
-    var html = '<div class="grid md:grid-cols-2 gap-6">';
-    html += '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6"><h2 class="text-2xl font-bold text-yellow-400 mb-4">Artilharia</h2>';
-    html += byGoals.length ? '<div class="space-y-3">' + byGoals.map(function(p,i){ return rankRow(p,i,p.totalGoals); }).join('') + '</div>' : '<p class="text-gray-400 text-center py-8">Nenhum gol registrado ainda</p>';
-    html += '</div>';
-    html += '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6"><h2 class="text-2xl font-bold text-yellow-400 mb-4">Assistencias</h2>';
-    html += byAssists.length ? '<div class="space-y-3">' + byAssists.map(function(p,i){ return rankRow(p,i,p.totalAssists); }).join('') + '</div>' : '<p class="text-gray-400 text-center py-8">Nenhuma assistencia registrada ainda</p>';
-    html += '</div></div>';
-    return html;
+function rankingsHTML() {
+    var bg = players.slice().sort(function(a,b){return b.totalGoals-a.totalGoals;});
+    var ba = players.slice().sort(function(a,b){return b.totalAssists-a.totalAssists;});
+    return '<div class="grid md:grid-cols-2 gap-6">' +
+        '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6"><h2 class="text-2xl font-bold text-yellow-400 mb-4">Artilharia</h2>' +
+        (bg.length ? '<div class="space-y-3">' + bg.map(function(p,i){return rankRow(p,i,p.totalGoals);}).join('') + '</div>' : '<p class="text-gray-400 text-center py-8">Nenhum gol ainda</p>') + '</div>' +
+        '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6"><h2 class="text-2xl font-bold text-yellow-400 mb-4">Assistencias</h2>' +
+        (ba.length ? '<div class="space-y-3">' + ba.map(function(p,i){return rankRow(p,i,p.totalAssists);}).join('') + '</div>' : '<p class="text-gray-400 text-center py-8">Nenhuma assistencia ainda</p>') + '</div></div>';
 }
 
-function rankRow(player, index, value){
-    return '<div class="flex items-center justify-between p-3 rounded-lg ' + (index===0?'bg-yellow-400 border-2 border-yellow-500':'bg-gray-800') + '">' +
-        '<div class="flex items-center gap-3"><span class="font-bold text-lg ' + (index===0?'text-black':'text-yellow-400') + '">' + (index+1) + '</span>' +
-        '<span class="font-semibold ' + (index===0?'text-black':'text-white') + '">' + escapeHtml(player.name) + '</span></div>' +
-        '<span class="text-2xl font-bold ' + (index===0?'text-black':'text-yellow-400') + '">' + value + '</span></div>';
-}
-
-function presenceHTML(){
-    var sorted = players.slice().sort(function(a,b){ return b.totalPresence - a.totalPresence; });
-    var html = '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6"><h2 class="text-2xl font-bold text-yellow-400 mb-4">Ranking de Presenca</h2>';
-    if(sorted.length){
-        html += '<div class="space-y-3">';
-        html += sorted.map(function(p,i){
-            return '<div class="flex items-center justify-between p-3 rounded-lg ' + (i===0?'bg-yellow-400 border-2 border-yellow-500':'bg-gray-800') + '">' +
-                '<div class="flex items-center gap-3"><span class="font-bold text-lg ' + (i===0?'text-black':'text-yellow-400') + '">' + (i+1) + 'o</span>' +
-                '<span class="font-semibold ' + (i===0?'text-black':'text-white') + '">' + escapeHtml(p.name) + '</span></div>' +
+function presenceHTML() {
+    var s = players.slice().sort(function(a,b){return b.totalPresence-a.totalPresence;});
+    return '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6"><h2 class="text-2xl font-bold text-yellow-400 mb-4">Ranking de Presenca</h2>' +
+        (s.length ? '<div class="space-y-3">' + s.map(function(p,i){
+            return '<div class="flex items-center justify-between p-3 rounded-lg ' + (i===0?'bg-yellow-400':'bg-gray-800') + '">' +
+                '<div class="flex items-center gap-3"><span class="font-bold text-lg ' + (i===0?'text-black':'text-yellow-400') + '">' + (i+1) + '</span>' +
+                '<span class="font-semibold ' + (i===0?'text-black':'text-white') + '">' + esc(p.name) + '</span></div>' +
                 '<div class="text-right"><span class="text-2xl font-bold ' + (i===0?'text-black':'text-yellow-400') + '">' + p.totalPresence + '</span>' +
                 '<div class="text-xs ' + (i===0?'text-black':'text-gray-400') + '">presencas</div></div></div>';
-        }).join('');
-        html += '</div>';
-    } else {
-        html += '<p class="text-gray-400 text-center py-8">Nenhuma presenca registrada ainda</p>';
-    }
-    html += '</div>';
-    return html;
+        }).join('') + '</div>' : '<p class="text-gray-400 text-center py-8">Nenhuma presenca ainda</p>') + '</div>';
 }
 
-function classificationHTML(){
-    var sorted = players.slice().sort(function(a,b){
-        if(b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
-        if(b.wins !== a.wins) return b.wins - a.wins;
-        return (b.totalGoals - b.totalAssists) - (a.totalGoals - a.totalAssists);
+function classHTML() {
+    var s = players.slice().sort(function(a,b){
+        if(b.totalPoints!==a.totalPoints)return b.totalPoints-a.totalPoints;
+        if(b.wins!==a.wins)return b.wins-a.wins;
+        return(b.totalGoals-b.totalAssists)-(a.totalGoals-a.totalAssists);
     });
-    var html = '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6 overflow-x-auto"><h2 class="text-2xl font-bold text-yellow-400 mb-4">Classificacao Individual</h2>';
-    if(sorted.length){
-        html += '<table class="w-full text-left"><thead><tr class="border-b-2 border-yellow-400">' +
-            '<th class="p-2 text-yellow-400 font-bold">#</th><th class="p-2 text-yellow-400 font-bold">Jogador</th>' +
-            '<th class="p-2 text-yellow-400 font-bold text-center">V</th><th class="p-2 text-yellow-400 font-bold text-center">E</th>' +
-            '<th class="p-2 text-yellow-400 font-bold text-center">D</th><th class="p-2 text-yellow-400 font-bold text-center">PTS</th></tr></thead><tbody>';
-        html += sorted.map(function(p,i){
+    return '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6 overflow-x-auto"><h2 class="text-2xl font-bold text-yellow-400 mb-4">Classificacao Individual</h2>' +
+        (s.length ? '<table class="w-full text-left"><thead><tr class="border-b-2 border-yellow-400">' +
+        '<th class="p-2 text-yellow-400">#</th><th class="p-2 text-yellow-400">Jogador</th>' +
+        '<th class="p-2 text-yellow-400 text-center">V</th><th class="p-2 text-yellow-400 text-center">E</th>' +
+        '<th class="p-2 text-yellow-400 text-center">D</th><th class="p-2 text-yellow-400 text-center">PTS</th></tr></thead><tbody>' +
+        s.map(function(p,i){
             return '<tr class="border-b border-gray-700 ' + (i===0?'bg-yellow-400':'') + '">' +
                 '<td class="p-2 font-bold ' + (i===0?'text-black':'text-yellow-400') + '">' + (i+1) + '</td>' +
-                '<td class="p-2 font-semibold ' + (i===0?'text-black':'text-white') + '">' + escapeHtml(p.name) + '</td>' +
+                '<td class="p-2 font-semibold ' + (i===0?'text-black':'text-white') + '">' + esc(p.name) + '</td>' +
                 '<td class="p-2 text-center ' + (i===0?'text-black':'text-gray-300') + '">' + (p.wins||0) + '</td>' +
                 '<td class="p-2 text-center ' + (i===0?'text-black':'text-gray-300') + '">' + (p.draws||0) + '</td>' +
                 '<td class="p-2 text-center ' + (i===0?'text-black':'text-gray-300') + '">' + (p.losses||0) + '</td>' +
                 '<td class="p-2 text-center font-bold text-lg ' + (i===0?'text-black':'text-yellow-400') + '">' + (p.totalPoints||0) + '</td></tr>';
-        }).join('');
-        html += '</tbody></table>';
-    } else {
-        html += '<p class="text-gray-400 text-center py-8">Nenhum resultado registrado ainda</p>';
-    }
-    html += '</div>';
-    return html;
+        }).join('') + '</tbody></table>'
+        : '<p class="text-gray-400 text-center py-8">Nenhum resultado ainda</p>') + '</div>';
 }
 
-function newMatchHTML(){
-    if(players.length === 0){
-        return '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">' +
-            '<h2 class="text-2xl font-bold text-yellow-400 mb-6">' + (editingMatchId?'Editar Partida':'Registrar Nova Partida') + '</h2>' +
-            '<p class="text-gray-400 text-center py-8">Adicione jogadores primeiro na aba "Jogadores"</p></div>';
-    }
-    var html = '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">' +
-        '<h2 class="text-2xl font-bold text-yellow-400 mb-6">' + (editingMatchId?'Editar Partida':'Registrar Nova Partida') + '</h2>';
-    if(editingMatchId){
-        html += '<div class="bg-yellow-400 text-black p-3 rounded-lg mb-4 flex items-center justify-between">' +
-            '<span class="font-semibold">Editando partida existente</span>' +
-            '<button onclick="cancelEdit()" class="bg-black text-yellow-400 px-3 py-1 rounded font-semibold hover:bg-gray-800">Cancelar</button></div>';
-    }
+function newMatchHTML() {
+    if (!players.length) return '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6"><p class="text-gray-400 text-center py-8">Adicione jogadores primeiro</p></div>';
+    var html = '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6">' +
+        '<h2 class="text-2xl font-bold text-yellow-400 mb-6">' + (editingMatchId?'Editar Partida':'Nova Partida') + '</h2>';
+    if (editingMatchId) html += '<div class="bg-yellow-400 text-black p-3 rounded-lg mb-4 flex items-center justify-between"><span class="font-semibold">Editando partida</span><button onclick="cancelEdit()" class="bg-black text-yellow-400 px-3 py-1 rounded">Cancelar</button></div>';
     html += '<div class="mb-6"><label class="block text-yellow-400 font-semibold mb-2">Data da Partida</label>' +
-        '<input id="match-date-input" type="date" value="' + (currentMatch.date||'') + '" class="w-full px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none" /></div>';
-    html += '<div class="space-y-4 mb-6">' + players.map(function(p){ return playerMatchCard(p); }).join('') + '</div>';
-    html += '<button onclick="saveMatch()" class="w-full bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-3 px-6 rounded-lg transition">' + (editingMatchId?'Salvar Alteracoes':'Salvar Partida') + '</button>';
-    html += '</div>';
+        '<input id="mdate" type="date" value="' + (currentMatch.date||'') + '" class="w-full px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white rounded-lg"/></div>' +
+        '<div class="space-y-4 mb-6">' + players.map(function(p) {
+            var st = currentMatch.stats[p.id] || { goals:0, assists:0 };
+            var att = currentMatch.attendance[p.id] || false;
+            var res = currentMatch.results[p.id];
+            return '<div class="bg-gray-800 border border-yellow-400 p-4 rounded-lg">' +
+                '<div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-yellow-400">' + esc(p.name) + '</h3>' +
+                '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ' + (att?'checked':'') + ' onclick="toggleAttendance(\'' + p.id + '\')" class="w-5 h-5"/><span class="text-white">Presente</span></label></div>' +
+                '<div class="grid grid-cols-2 gap-4 mb-3">' +
+                '<div><label class="block text-sm text-gray-300 mb-1">Gols</label><input type="number" min="0" value="' + (st.goals||'') + '" placeholder="0" oninput="onStatInput(\'' + p.id + '\',\'goals\',this.value)" class="w-full px-3 py-2 bg-gray-900 border-2 border-yellow-400 text-white rounded-lg"/></div>' +
+                '<div><label class="block text-sm text-gray-300 mb-1">Assistencias</label><input type="number" min="0" value="' + (st.assists||'') + '" placeholder="0" oninput="onStatInput(\'' + p.id + '\',\'assists\',this.value)" class="w-full px-3 py-2 bg-gray-900 border-2 border-yellow-400 text-white rounded-lg"/></div></div>' +
+                '<div><label class="block text-sm text-gray-300 mb-2">Resultado</label><div class="flex gap-2">' +
+                '<button onclick="setResult(\'' + p.id + '\',\'win\')" class="flex-1 py-2 rounded font-semibold ' + (res==='win'?'bg-green-600 text-white':'bg-gray-700 text-gray-300') + '">Vitoria</button>' +
+                '<button onclick="setResult(\'' + p.id + '\',\'draw\')" class="flex-1 py-2 rounded font-semibold ' + (res==='draw'?'bg-yellow-600 text-white':'bg-gray-700 text-gray-300') + '">Empate</button>' +
+                '<button onclick="setResult(\'' + p.id + '\',\'loss\')" class="flex-1 py-2 rounded font-semibold ' + (res==='loss'?'bg-red-600 text-white':'bg-gray-700 text-gray-300') + '">Derrota</button>' +
+                '</div></div></div>';
+        }).join('') + '</div>' +
+        '<button onclick="saveMatch()" class="w-full bg-yellow-400 text-black font-bold py-3 rounded-lg">' + (editingMatchId?'Salvar Alteracoes':'Salvar Partida') + '</button></div>';
     return html;
 }
 
-function playerMatchCard(player){
-    var stats = currentMatch.stats[player.id] || { goals: 0, assists: 0 };
-    var attended = currentMatch.attendance[player.id] || false;
-    var result = currentMatch.results[player.id];
-    return '<div class="bg-gray-800 border border-yellow-400 p-4 rounded-lg">' +
-        '<div class="flex items-center justify-between mb-3"><h3 class="font-semibold text-yellow-400">' + escapeHtml(player.name) + '</h3>' +
-        '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ' + (attended?'checked':'') + ' onclick="toggleAttendance(\'' + player.id + '\')" class="w-5 h-5" />' +
-        '<span class="text-white font-semibold">Presente</span></label></div>' +
-        '<div class="grid grid-cols-2 gap-4 mb-3">' +
-        '<div><label class="block text-sm text-gray-300 mb-1">Gols</label>' +
-        '<input type="number" min="0" value="' + (stats.goals||'') + '" placeholder="0" oninput="onStatInput(\'' + player.id + '\',\'goals\',this.value)" class="w-full px-3 py-2 bg-gray-900 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none" /></div>' +
-        '<div><label class="block text-sm text-gray-300 mb-1">Assistencias</label>' +
-        '<input type="number" min="0" value="' + (stats.assists||'') + '" placeholder="0" oninput="onStatInput(\'' + player.id + '\',\'assists\',this.value)" class="w-full px-3 py-2 bg-gray-900 border-2 border-yellow-400 text-white rounded-lg focus:border-yellow-300 focus:outline-none" /></div>' +
-        '</div>' +
-        '<div><label class="block text-sm text-gray-300 mb-2">Resultado Individual</label><div class="flex gap-2">' +
-        '<button onclick="setResult(\'' + player.id + '\',\'win\')" class="flex-1 py-2 px-3 rounded font-semibold transition ' + (result==='win'?'bg-green-600 text-white':'bg-gray-700 text-gray-300 hover:bg-gray-600') + '">Vitoria</button>' +
-        '<button onclick="setResult(\'' + player.id + '\',\'draw\')" class="flex-1 py-2 px-3 rounded font-semibold transition ' + (result==='draw'?'bg-yellow-600 text-white':'bg-gray-700 text-gray-300 hover:bg-gray-600') + '">Empate</button>' +
-        '<button onclick="setResult(\'' + player.id + '\',\'loss\')" class="flex-1 py-2 px-3 rounded font-semibold transition ' + (result==='loss'?'bg-red-600 text-white':'bg-gray-700 text-gray-300 hover:bg-gray-600') + '">Derrota</button>' +
-        '</div></div></div>';
+function bindMatch() {
+    var d = document.getElementById('mdate');
+    if (d) d.addEventListener('change', function(e) { currentMatch.date = e.target.value; });
 }
 
-function attachNewMatchListeners(){
-    var dateInput = document.getElementById('match-date-input');
-    if(dateInput){
-        dateInput.addEventListener('change', function(e){ currentMatch.date = e.target.value; });
-    }
-}
-
-function playersHTML(){
-    var html = '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">' +
+function playersHTML() {
+    return '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6">' +
         '<h2 class="text-2xl font-bold text-yellow-400 mb-6">Gerenciar Jogadores</h2>' +
-        '<div class="flex gap-2 mb-6"><input id="new-player-input" type="text" placeholder="Nome do jogador" value="' + escapeHtml(newPlayerNameValue) + '" class="flex-1 px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white placeholder-gray-400 rounded-lg focus:border-yellow-300 focus:outline-none" />' +
-        '<button onclick="addPlayer()" class="bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-2 px-6 rounded-lg transition">Adicionar</button></div>' +
-        '<div class="space-y-2">';
-    html += players.map(function(p){
-        return '<div class="flex items-center justify-between bg-gray-800 border border-yellow-400 p-4 rounded-lg">' +
-            '<div><span class="font-semibold text-yellow-400">' + escapeHtml(p.name) + '</span>' +
-            '<div class="text-sm text-gray-300 mt-1">' + p.totalGoals + ' gols - ' + p.totalAssists + ' assists - ' + p.totalPresence + ' presencas - ' + p.totalPoints + ' pts</div></div>' +
-            '<button onclick="removePlayer(\'' + p.id + '\')" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition">Remover</button></div>';
-    }).join('');
-    html += '</div>';
-    if(players.length === 0) html += '<p class="text-gray-400 text-center py-8">Nenhum jogador cadastrado</p>';
-    html += '</div>';
-    return html;
+        '<div class="flex gap-2 mb-6"><input id="npi" type="text" placeholder="Nome do jogador" value="' + esc(newPlayerNameValue) + '" class="flex-1 px-4 py-2 bg-gray-800 border-2 border-yellow-400 text-white placeholder-gray-400 rounded-lg"/>' +
+        '<button onclick="addPlayer()" class="bg-yellow-400 text-black font-bold py-2 px-6 rounded-lg">Adicionar</button></div>' +
+        '<div class="space-y-2">' + players.map(function(p) {
+            return '<div class="flex items-center justify-between bg-gray-800 border border-yellow-400 p-4 rounded-lg">' +
+                '<div><span class="font-semibold text-yellow-400">' + esc(p.name) + '</span>' +
+                '<div class="text-sm text-gray-300 mt-1">' + p.totalGoals + ' gols - ' + p.totalAssists + ' assists - ' + p.totalPresence + ' presencas - ' + p.totalPoints + ' pts</div></div>' +
+                '<button onclick="removePlayer(\'' + p.id + '\')" class="bg-red-600 text-white px-4 py-2 rounded-lg">Remover</button></div>';
+        }).join('') +
+        (players.length===0?'<p class="text-gray-400 text-center py-8">Nenhum jogador cadastrado</p>':'') + '</div></div>';
 }
 
-function attachPlayersListeners(){
-    var input = document.getElementById('new-player-input');
-    if(input){
-        input.addEventListener('input', function(e){ newPlayerNameValue = e.target.value; });
-        input.addEventListener('keypress', function(e){ if(e.key === 'Enter') addPlayer(); });
+function bindPlayers() {
+    var i = document.getElementById('npi');
+    if (i) {
+        i.addEventListener('input', function(e) { newPlayerNameValue = e.target.value; });
+        i.addEventListener('keypress', function(e) { if (e.key==='Enter') addPlayer(); });
     }
 }
 
-function historyHTML(){
-    if(matches.length === 0){
-        return '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">' +
-            '<h2 class="text-2xl font-bold text-yellow-400 mb-6">Historico de Partidas</h2>' +
-            '<p class="text-gray-400 text-center py-8">Nenhuma partida registrada ainda</p></div>';
-    }
-    var reversed = matches.slice().reverse();
-    var html = '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg shadow-xl p-6">' +
-        '<h2 class="text-2xl font-bold text-yellow-400 mb-6">Historico de Partidas</h2><div class="space-y-4">';
-    html += reversed.map(function(m){ return matchHistoryCard(m); }).join('');
-    html += '</div></div>';
-    return html;
-}
-
-function matchHistoryCard(match){
-    var lines = players.map(function(player){
-        var stats = match.stats && match.stats[player.id];
-        var attended = match.attendance && match.attendance[player.id];
-        var result = match.results && match.results[player.id];
-        if(!stats && !attended && !result) return '';
-        var parts = ['<span class="font-medium text-white">' + escapeHtml(player.name) + ':</span>'];
-        if(stats && stats.goals > 0) parts.push('<span>' + stats.goals + ' gol(s)</span>');
-        if(stats && stats.assists > 0) parts.push('<span>- ' + stats.assists + ' assist.</span>');
-        if(result === 'win') parts.push('<span class="text-green-400">- Vitoria</span>');
-        if(result === 'draw') parts.push('<span class="text-yellow-400">- Empate</span>');
-        if(result === 'loss') parts.push('<span class="text-red-400">- Derrota</span>');
-        if(attended) parts.push('<span class="text-blue-400">- Presente</span>');
-        return '<div class="text-sm text-gray-300 flex items-center gap-2 flex-wrap">' + parts.join(' ') + '</div>';
-    }).join('');
-
-    var adminButtons = '';
-    if(isAdmin){
-        adminButtons = '<div class="flex gap-2">' +
-            '<button onclick="editMatch(\'' + match.id + '\')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-semibold">Editar</button>' +
-            '<button onclick="deleteMatch(\'' + match.id + '\')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-semibold">Deletar</button></div>';
-    }
-
-    return '<div class="bg-gray-800 border border-yellow-400 p-4 rounded-lg">' +
-        '<div class="flex justify-between items-center mb-3"><div class="font-semibold text-yellow-400">' + formatDate(match.date) + '</div>' + adminButtons + '</div>' +
-        '<div class="space-y-2">' + lines + '</div></div>';
+function historyHTML() {
+    if (!matches.length) return '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6"><p class="text-gray-400 text-center py-8">Nenhuma partida registrada ainda</p></div>';
+    return '<div class="bg-gray-900 border-2 border-yellow-400 rounded-lg p-6"><h2 class="text-2xl font-bold text-yellow-400 mb-6">Historico de Partidas</h2>' +
+        '<div class="space-y-4">' + matches.slice().reverse().map(function(m) {
+            var lines = players.map(function(p) {
+                var s = m.stats && m.stats[p.id];
+                var att = m.attendance && m.attendance[p.id];
+                var res = m.results && m.results[p.id];
+                if (!s && !att && !res) return '';
+                var parts = ['<span class="font-medium text-white">' + esc(p.name) + ':</span>'];
+                if (s && s.goals > 0) parts.push('<span>' + s.goals + ' gol(s)</span>');
+                if (s && s.assists > 0) parts.push('<span>- ' + s.assists + ' assist.</span>');
+                if (res==='win') parts.push('<span class="text-green-400">- Vitoria</span>');
+                if (res==='draw') parts.push('<span class="text-yellow-400">- Empate</span>');
+                if (res==='loss') parts.push('<span class="text-red-400">- Derrota</span>');
+                if (att) parts.push('<span class="text-blue-400">- Presente</span>');
+                return '<div class="text-sm text-gray-300 flex flex-wrap gap-1">' + parts.join(' ') + '</div>';
+            }).join('');
+            return '<div class="bg-gray-800 border border-yellow-400 p-4 rounded-lg">' +
+                '<div class="flex justify-between items-center mb-3">' +
+                '<span class="font-semibold text-yellow-400">' + formatDate(m.date) + '</span>' +
+                (isAdmin ? '<div class="flex gap-2"><button onclick="editMatch(\'' + m.id + '\')" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">Editar</button>' +
+                '<button onclick="deleteMatch(\'' + m.id + '\')" class="bg-red-600 text-white px-3 py-1 rounded text-sm">Deletar</button></div>' : '') +
+                '</div><div class="space-y-1">' + lines + '</div></div>';
+        }).join('') + '</div></div>';
 }
 
 loadData();
