@@ -290,15 +290,17 @@ function render(){
         '<div style="width:64px;height:64px;flex-shrink:0">' +
         '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">' +
         '<circle cx="100" cy="100" r="99" fill="#1a1a1a"/>' +
-        '<circle cx="100" cy="100" r="99" fill="none" stroke="#F5C518" stroke-width="5"/>' +
-        '<circle cx="100" cy="100" r="74" fill="none" stroke="#F5C518" stroke-width="4"/>' +
-        '<path d="M 26 120 A 74 74 0 0 0 174 120 Z" fill="#F5C518"/>' +
-        '<text x="100" y="55" text-anchor="middle" fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="26" letter-spacing="8">SUB</text>' +
-        '<text x="100" y="115" text-anchor="middle" fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="72" letter-spacing="-2">50</text>' +
-        '<text x="100" y="138" text-anchor="middle" fill="#1a1a1a" font-family="Arial Black,Arial" font-weight="900" font-size="18">2019</text>' +
-        '<path d="M 30 148 A 70 70 0 0 0 170 148" fill="none"/>' +
-        '<text fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="16"><textPath href="#bottom-arc" startOffset="50%" text-anchor="middle">CINQUENTA</textPath></text>' +
-        '<defs><path id="bottom-arc" d="M 28 148 A 72 72 0 0 0 172 148"/></defs>' +
+        '<circle cx="100" cy="100" r="99" fill="none" stroke="#F5C518" stroke-width="6"/>' +
+        '<circle cx="100" cy="100" r="68" fill="#1a1a1a" stroke="#F5C518" stroke-width="5"/>' +
+        '<path d="M 32 118 A 68 68 0 0 0 168 118 Z" fill="#F5C518"/>' +
+        '<defs>' +
+        '<path id="top-arc" d="M 15 95 A 85 85 0 0 1 185 95"/>' +
+        '<path id="bottom-arc" d="M 18 130 A 85 85 0 0 0 182 130"/>' +
+        '</defs>' +
+        '<text fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="28" letter-spacing="12"><textPath href="#top-arc" startOffset="50%" text-anchor="middle">SUB</textPath></text>' +
+        '<text x="100" y="112" text-anchor="middle" fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="68">50</text>' +
+        '<text x="100" y="136" text-anchor="middle" fill="#1a1a1a" font-family="Arial Black,Arial" font-weight="900" font-size="20">2019</text>' +
+        '<text fill="#F5C518" font-family="Arial Black,Arial" font-weight="900" font-size="22" letter-spacing="4"><textPath href="#bottom-arc" startOffset="50%" text-anchor="middle">CINQUENTA</textPath></text>' +
         '</svg></div>' +
         '<div><h1 class="text-2xl md:text-4xl font-bold text-black">Sub 50 Cinquenta</h1><p class="text-black font-semibold text-xs md:text-sm">Gerenciador de Estatisticas</p></div>' +
         '</div>' +
@@ -407,7 +409,7 @@ function classificationHTML(){
             '<th class="p-2 text-yellow-400 font-bold text-center">D</th><th class="p-2 text-yellow-400 font-bold text-center">PTS</th></tr></thead><tbody>';
         html += sorted.map(function(p,i){
             return '<tr class="border-b border-gray-700 ' + (i===0?'bg-yellow-400':'') + '">' +
-                '<td class="p-2 font-bold ' + (i===0?'text-black':'text-yellow-400') + '">' + (i+1) + '°</td>' +
+                '<td class="p-2 font-bold ' + (i===0?'text-black':'text-yellow-400') + '">' + (i+1) + '</td>' +
                 '<td class="p-2 font-semibold ' + (i===0?'text-black':'text-white') + '">' + escapeHtml(p.name) + '</td>' +
                 '<td class="p-2 text-center ' + (i===0?'text-black':'text-gray-300') + '">' + (p.wins||0) + '</td>' +
                 '<td class="p-2 text-center ' + (i===0?'text-black':'text-gray-300') + '">' + (p.draws||0) + '</td>' +
